@@ -4034,6 +4034,8 @@ struct work_queue_task *work_queue_task_clone(const struct work_queue_task *task
   struct work_queue_task *new = xxmalloc(sizeof(struct work_queue_task));
   memcpy(new, task, sizeof(*new));
 
+  new->taskid = 0;
+
   //allocate new memory so we don't segfault when original memory is freed.
   if(task->tag) {
 	new->tag = xxstrdup(task->tag);
@@ -4060,18 +4062,15 @@ struct work_queue_task *work_queue_task_clone(const struct work_queue_task *task
   new->env_list     = work_queue_task_env_list_clone(task->env_list);
 
   if(task->resources_requested) {
-	  new->resources_requested = malloc(sizeof(struct rmsummary));
-	  memcpy(new->resources_requested, task->resources_requested, sizeof(sizeof(struct rmsummary)));
+	  new->resources_requested = rmsummary_copy(task->resources_requested);
   }
 
   if(task->resources_measured) {
-	  new->resources_measured = malloc(sizeof(struct rmsummary));
-	  memcpy(new->resources_measured, task->resources_measured, sizeof(sizeof(struct rmsummary)));
+	  new->resources_measured = rmsummary_copy(task->resources_measured);
   }
 
   if(task->resources_allocated) {
-	  new->resources_allocated = malloc(sizeof(struct rmsummary));
-	  memcpy(new->resources_allocated, task->resources_allocated, sizeof(sizeof(struct rmsummary)));
+	  new->resources_allocated = rmsummary_copy(task->resources_allocated);
   }
 
   if(task->monitor_output_directory) {
@@ -4217,12 +4216,15 @@ void work_queue_task_specify_category(struct work_queue_task *t, const char *cat
 	t->category = xxstrdup(category ? category : "default");
 }
 
-void work_queue_task_specify_feature(struct work_queue_task *t, const char *name, int64_t count)
+void work_queue_task_specify_feature(struct work_queue_task *t, const char *name)
 {
-	if(!name)
+	if(!name) {
 		return;
-	if(!t->features)
+	}
+
+	if(!t->features) {
 		t->features = list_create();
+	}
 
 	list_push_tail(t->features, xxstrdup(name));
 }
@@ -5427,6 +5429,27 @@ const char *task_state_str(work_queue_task_state_t task_state) {
 	return str;
 }
 
+static int task_in_terminal_state(struct work_queue *q, struct work_queue_task *t) {
+
+	work_queue_task_state_t state = (uintptr_t) itable_lookup(q->task_state_map, t->taskid);
+
+	switch(state) {
+		case WORK_QUEUE_TASK_READY:
+		case WORK_QUEUE_TASK_RUNNING:
+		case WORK_QUEUE_TASK_WAITING_RETRIEVAL:
+		case WORK_QUEUE_TASK_RETRIEVED:
+			return 0;
+			break;
+		case WORK_QUEUE_TASK_DONE:
+		case WORK_QUEUE_TASK_CANCELED:
+		case WORK_QUEUE_TASK_UNKNOWN:
+			return 1;
+			break;
+	}
+
+	return 0;
+}
+
 const char *task_result_str(work_queue_result_t result) {
 	const char *str;
 
@@ -5544,6 +5567,11 @@ int work_queue_submit_internal(struct work_queue *q, struct work_queue_task *t)
 
 int work_queue_submit(struct work_queue *q, struct work_queue_task *t)
 {
+	if(t->taskid > 0 && !task_in_terminal_state(q, t)) {
+		debug(D_NOTICE|D_WQ, "Task %d has been already submitted. Ignoring new submission.", t->taskid);
+		return 0;
+	}
+
 	t->taskid = q->next_taskid;
 
 	//Increment taskid. So we get a unique taskid for every submit.

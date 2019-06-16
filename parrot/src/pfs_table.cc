@@ -46,6 +46,11 @@ extern "C" {
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#ifndef major
+/* glibc 2.26 drops sys/sysmacros.h from sys/types.h, thus we add it here */
+#include <sys/sysmacros.h>
+#endif
+
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -563,7 +568,9 @@ int pfs_table::resolve_name(int is_special_syscall, const char *cname, struct pf
 
 		if(pattern_match(pname->path, "^/proc/self/?()", &n) >= 0) {
 			strncpy(full_logical_name, pname->path, sizeof(full_logical_name));
-			snprintf(pname->path, sizeof(pname->path), "/proc/%d/%s", pfs_process_getpid(), &full_logical_name[n]);
+
+			string_nformat(pname->path, sizeof(pname->path), "/proc/%d/%s", pfs_process_getpid(), &full_logical_name[n]);
+
 			strcpy(pname->logical_name, pname->path);
 			strcpy(pname->rest, pname->path);
 			pname->service = pfs_service_lookup_default();
@@ -573,7 +580,7 @@ int pfs_table::resolve_name(int is_special_syscall, const char *cname, struct pf
 			pname->is_local = 1;
 		} else if (pattern_match(pname->path, "^/dev/fd/?()", &n) >= 0) {
 			strncpy(full_logical_name, pname->path, sizeof(full_logical_name));
-			snprintf(pname->path, sizeof(pname->path), "/proc/%d/fd/%s", pfs_process_getpid(), &full_logical_name[n]);
+			string_nformat(pname->path, sizeof(pname->path), "/proc/%d/fd/%s", pfs_process_getpid(), &full_logical_name[n]);
 			strcpy(pname->logical_name, pname->path);
 			strcpy(pname->rest, pname->path);
 			pname->service = pfs_service_lookup_default();

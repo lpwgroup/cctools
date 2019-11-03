@@ -1147,6 +1147,8 @@ EOF
 			if [ $BUILD_SYS = DARWIN ]
 			then
 				python_ldflags="$python_ldflags -undefined dynamic_lookup -lz"
+			else
+				python_ldflags="$python_ldflags -lz"
 			fi
 
 			swig_bindings="$swig_bindings python"
@@ -1236,6 +1238,8 @@ EOF
 				if [ $BUILD_SYS = DARWIN ]
 				then
 					python3_ldflags="$python3_ldflags -undefined dynamic_lookup -lz"
+				else
+					python3_ldflags="$python3_ldflags -lz"
 				fi
 
 				swig_bindings="$swig_bindings python3"
